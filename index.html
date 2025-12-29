@@ -81,15 +81,61 @@
             transform: translate(-50%, -50%);
         }
 
+        .trap {
+            width: 45px;
+            height: 45px;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            background: radial-gradient(circle, #2ecc71 0%, #27ae60 50%, #1e8449 100%);
+            box-shadow: 0 0 15px #2ecc71, 0 0 30px rgba(46, 204, 113, 0.5);
+            z-index: 5;
+            animation: trapPulse 1.5s ease-in-out infinite;
+        }
+
+        .trap::before {
+            content: '🪤';
+            font-size: 24px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .trap.triggered {
+            animation: trapExplode 0.5s ease-out forwards;
+        }
+
+        @keyframes trapPulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.8; }
+        }
+
+        @keyframes trapExplode {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.5); opacity: 0.5; }
+            100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+        }
+
+        .monster.dying {
+            animation: monsterDie 0.5s ease-out forwards;
+        }
+
+        @keyframes monsterDie {
+            0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0) rotate(720deg); opacity: 0; }
+        }
+
         #score {
             position: fixed;
             top: 20px;
             left: 20px;
             color: white;
             font-family: 'Arial', sans-serif;
-            font-size: 24px;
+            font-size: 20px;
             z-index: 100;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            line-height: 1.6;
         }
 
         #gameOver {
@@ -111,6 +157,10 @@
         #gameOver h1 {
             color: #ff4757;
             margin-bottom: 20px;
+        }
+
+        #gameOver p {
+            margin: 10px 0;
         }
 
         #gameOver button {
@@ -138,6 +188,7 @@
             font-family: 'Arial', sans-serif;
             font-size: 14px;
             z-index: 100;
+            text-align: center;
         }
     </style>
 </head>
@@ -148,22 +199,34 @@
         <div class="monster monster2" id="monster2"></div>
     </div>
 
-    <div id="score">⏱️ Survie: <span id="time">0</span>s</div>
+    <div id="score">
+        ⏱️ Survie: <span id="time">0</span>s<br>
+        💀 Monstres tués: <span id="kills">0</span><br>
+        🪤 Pièges: <span id="trapCount">3</span>
+    </div>
 
-    <div id="instructions">🎮 Déplacez votre souris pour contrôler le personnage - Évitez les monstres!</div>
+    <div id="instructions">
+        🎮 Souris = déplacer | Clic = poser un piège<br>
+        Évitez les monstres et piégez-les!
+    </div>
 
     <div id="gameOver">
         <h1>💀 GAME OVER!</h1>
         <p>Vous avez survécu <span id="finalTime">0</span> secondes!</p>
+        <p>Monstres éliminés: <span id="finalKills">0</span></p>
         <button onclick="restartGame()">🔄 Rejouer</button>
     </div>
 
     <script>
+        const game = document.getElementById('game');
         const player = document.getElementById('player');
         const monster1 = document.getElementById('monster1');
         const monster2 = document.getElementById('monster2');
         const timeDisplay = document.getElementById('time');
+        const killsDisplay = document.getElementById('kills');
+        const trapCountDisplay = document.getElementById('trapCount');
         const finalTimeDisplay = document.getElementById('finalTime');
+        const finalKillsDisplay = document.getElementById('finalKills');
         const gameOverScreen = document.getElementById('gameOver');
 
         let playerX = window.innerWidth / 2;
@@ -171,15 +234,23 @@
 
         let monster1X = 100;
         let monster1Y = 100;
+        let monster1Active = true;
+
         let monster2X = window.innerWidth - 100;
         let monster2Y = window.innerHeight - 100;
+        let monster2Active = true;
 
         let gameRunning = true;
         let startTime = Date.now();
         let survivalTime = 0;
+        let kills = 0;
+        let trapsAvailable = 3;
+        let traps = [];
 
         const monster1Speed = 2.5;
         const monster2Speed = 2;
+        const trapRadius = 25;
+        const monsterRadius = 17;
 
         // Suivi de la souris
         document.addEventListener('mousemove', (e) => {
@@ -189,70 +260,202 @@
             }
         });
 
+        // Poser un piège au clic
+        document.addEventListener('click', (e) => {
+            if (gameRunning && trapsAvailable > 0) {
+                placeTrap(e.clientX, e.clientY);
+            }
+        });
+
+        // Placer un piège
+        function placeTrap(x, y) {
+            trapsAvailable--;
+            trapCountDisplay.textContent = trapsAvailable;
+
+            const trap = document.createElement('div');
+            trap.className = 'trap';
+            trap.style.left = x + 'px';
+            trap.style.top = y + 'px';
+            game.appendChild(trap);
+
+            traps.push({
+                element: trap,
+                x: x,
+                y: y,
+                active: true
+            });
+
+            // Regénérer un piège après 5 secondes
+            setTimeout(() => {
+                if (gameRunning) {
+                    trapsAvailable++;
+                    trapCountDisplay.textContent = trapsAvailable;
+                }
+            }, 5000);
+        }
+
         // Mise à jour de la position du joueur
         function updatePlayer() {
             player.style.left = playerX + 'px';
             player.style.top = playerY + 'px';
         }
 
+        // Respawn d'un monstre à une position aléatoire loin du joueur
+        function respawnMonster(monsterNum) {
+            let newX, newY;
+            const minDist = 200;
+
+            do {
+                newX = Math.random() * (window.innerWidth - 100) + 50;
+                newY = Math.random() * (window.innerHeight - 100) + 50;
+            } while (Math.sqrt((newX - playerX) ** 2 + (newY - playerY) ** 2) < minDist);
+
+            if (monsterNum === 1) {
+                monster1X = newX;
+                monster1Y = newY;
+                monster1Active = true;
+                monster1.classList.remove('dying');
+                monster1.style.display = 'block';
+            } else {
+                monster2X = newX;
+                monster2Y = newY;
+                monster2Active = true;
+                monster2.classList.remove('dying');
+                monster2.style.display = 'block';
+            }
+        }
+
+        // Vérifier collision monstre-piège
+        function checkTrapCollisions() {
+            traps.forEach((trap, index) => {
+                if (!trap.active) return;
+
+                // Monstre 1
+                if (monster1Active) {
+                    const dist1 = Math.sqrt((monster1X - trap.x) ** 2 + (monster1Y - trap.y) ** 2);
+                    if (dist1 < trapRadius + monsterRadius) {
+                        killMonster(1, trap, index);
+                        return;
+                    }
+                }
+
+                // Monstre 2
+                if (monster2Active) {
+                    const dist2 = Math.sqrt((monster2X - trap.x) ** 2 + (monster2Y - trap.y) ** 2);
+                    if (dist2 < trapRadius + monsterRadius) {
+                        killMonster(2, trap, index);
+                        return;
+                    }
+                }
+            });
+        }
+
+        // Tuer un monstre
+        function killMonster(monsterNum, trap, trapIndex) {
+            kills++;
+            killsDisplay.textContent = kills;
+
+            // Désactiver le piège
+            trap.active = false;
+            trap.element.classList.add('triggered');
+            setTimeout(() => {
+                trap.element.remove();
+            }, 500);
+
+            // Animation de mort du monstre
+            if (monsterNum === 1) {
+                monster1Active = false;
+                monster1.classList.add('dying');
+                setTimeout(() => {
+                    if (gameRunning) respawnMonster(1);
+                }, 1500);
+            } else {
+                monster2Active = false;
+                monster2.classList.add('dying');
+                setTimeout(() => {
+                    if (gameRunning) respawnMonster(2);
+                }, 1500);
+            }
+
+            // Bonus: regagner un piège après avoir tué un monstre
+            trapsAvailable++;
+            trapCountDisplay.textContent = trapsAvailable;
+
+            // Nettoyer le tableau des pièges
+            traps = traps.filter(t => t.active);
+        }
+
         // Déplacement des monstres vers le joueur
         function updateMonsters() {
             // Monstre 1 - poursuit le joueur
-            let dx1 = playerX - monster1X;
-            let dy1 = playerY - monster1Y;
-            let dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+            if (monster1Active) {
+                let dx1 = playerX - monster1X;
+                let dy1 = playerY - monster1Y;
+                let dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
 
-            if (dist1 > 0) {
-                monster1X += (dx1 / dist1) * monster1Speed;
-                monster1Y += (dy1 / dist1) * monster1Speed;
+                if (dist1 > 0) {
+                    monster1X += (dx1 / dist1) * monster1Speed;
+                    monster1Y += (dy1 / dist1) * monster1Speed;
+                }
+
+                monster1.style.left = monster1X + 'px';
+                monster1.style.top = monster1Y + 'px';
             }
 
-            // Monstre 2 - poursuit le joueur (légèrement plus lent)
-            let dx2 = playerX - monster2X;
-            let dy2 = playerY - monster2Y;
-            let dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+            // Monstre 2 - poursuit le joueur
+            if (monster2Active) {
+                let dx2 = playerX - monster2X;
+                let dy2 = playerY - monster2Y;
+                let dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 
-            if (dist2 > 0) {
-                monster2X += (dx2 / dist2) * monster2Speed;
-                monster2Y += (dy2 / dist2) * monster2Speed;
+                if (dist2 > 0) {
+                    monster2X += (dx2 / dist2) * monster2Speed;
+                    monster2Y += (dy2 / dist2) * monster2Speed;
+                }
+
+                monster2.style.left = monster2X + 'px';
+                monster2.style.top = monster2Y + 'px';
             }
 
             // Les monstres s'évitent légèrement entre eux
-            let dxM = monster2X - monster1X;
-            let dyM = monster2Y - monster1Y;
-            let distM = Math.sqrt(dxM * dxM + dyM * dyM);
+            if (monster1Active && monster2Active) {
+                let dxM = monster2X - monster1X;
+                let dyM = monster2Y - monster1Y;
+                let distM = Math.sqrt(dxM * dxM + dyM * dyM);
 
-            if (distM < 60 && distM > 0) {
-                monster1X -= (dxM / distM) * 0.5;
-                monster1Y -= (dyM / distM) * 0.5;
-                monster2X += (dxM / distM) * 0.5;
-                monster2Y += (dyM / distM) * 0.5;
+                if (distM < 60 && distM > 0) {
+                    monster1X -= (dxM / distM) * 0.5;
+                    monster1Y -= (dyM / distM) * 0.5;
+                    monster2X += (dxM / distM) * 0.5;
+                    monster2Y += (dyM / distM) * 0.5;
+                }
             }
-
-            monster1.style.left = monster1X + 'px';
-            monster1.style.top = monster1Y + 'px';
-            monster2.style.left = monster2X + 'px';
-            monster2.style.top = monster2Y + 'px';
         }
 
-        // Vérification des collisions
+        // Vérification des collisions joueur-monstre
         function checkCollision() {
             const playerRadius = 20;
-            const monsterRadius = 17;
             const collisionDist = playerRadius + monsterRadius;
 
             // Collision avec monstre 1
-            let dx1 = playerX - monster1X;
-            let dy1 = playerY - monster1Y;
-            let dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+            if (monster1Active) {
+                let dx1 = playerX - monster1X;
+                let dy1 = playerY - monster1Y;
+                let dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+                if (dist1 < collisionDist) {
+                    gameOver();
+                    return;
+                }
+            }
 
             // Collision avec monstre 2
-            let dx2 = playerX - monster2X;
-            let dy2 = playerY - monster2Y;
-            let dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-
-            if (dist1 < collisionDist || dist2 < collisionDist) {
-                gameOver();
+            if (monster2Active) {
+                let dx2 = playerX - monster2X;
+                let dy2 = playerY - monster2Y;
+                let dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                if (dist2 < collisionDist) {
+                    gameOver();
+                }
             }
         }
 
@@ -268,22 +471,40 @@
         function gameOver() {
             gameRunning = false;
             finalTimeDisplay.textContent = survivalTime;
+            finalKillsDisplay.textContent = kills;
             gameOverScreen.style.display = 'block';
             document.body.style.cursor = 'default';
         }
 
         // Redémarrer le jeu
         function restartGame() {
+            // Nettoyer les pièges
+            traps.forEach(trap => trap.element.remove());
+            traps = [];
+
             playerX = window.innerWidth / 2;
             playerY = window.innerHeight / 2;
+
             monster1X = 100;
             monster1Y = 100;
+            monster1Active = true;
+            monster1.classList.remove('dying');
+            monster1.style.display = 'block';
+
             monster2X = window.innerWidth - 100;
             monster2Y = window.innerHeight - 100;
+            monster2Active = true;
+            monster2.classList.remove('dying');
+            monster2.style.display = 'block';
 
             gameRunning = true;
             startTime = Date.now();
             survivalTime = 0;
+            kills = 0;
+            trapsAvailable = 3;
+
+            killsDisplay.textContent = 0;
+            trapCountDisplay.textContent = 3;
 
             gameOverScreen.style.display = 'none';
             document.body.style.cursor = 'none';
@@ -294,6 +515,7 @@
             if (gameRunning) {
                 updatePlayer();
                 updateMonsters();
+                checkTrapCollisions();
                 checkCollision();
                 updateTime();
             }
