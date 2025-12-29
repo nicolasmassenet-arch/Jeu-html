@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Simple - Jeu de Poursuite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            height: 100vh;
+            cursor: none;
+        }
+
+        #game {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .player {
+            width: 40px;
+            height: 40px;
+            background: #00d4ff;
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px #00d4ff, 0 0 40px #00d4ff;
+            z-index: 10;
+        }
+
+        .player::before {
+            content: '😊';
+            font-size: 24px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .monster {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            transition: background 0.3s;
+        }
+
+        .monster1 {
+            background: #ff4757;
+            box-shadow: 0 0 15px #ff4757, 0 0 30px #ff4757;
+        }
+
+        .monster1::before {
+            content: '👹';
+            font-size: 22px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .monster2 {
+            background: #a55eea;
+            box-shadow: 0 0 15px #a55eea, 0 0 30px #a55eea;
+        }
+
+        .monster2::before {
+            content: '👻';
+            font-size: 22px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #score {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            font-size: 24px;
+            z-index: 100;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #gameOver {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 40px 60px;
+            border-radius: 20px;
+            text-align: center;
+            font-family: 'Arial', sans-serif;
+            display: none;
+            z-index: 200;
+            border: 3px solid #ff4757;
+        }
+
+        #gameOver h1 {
+            color: #ff4757;
+            margin-bottom: 20px;
+        }
+
+        #gameOver button {
+            background: #00d4ff;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        #gameOver button:hover {
+            transform: scale(1.1);
+            background: #00b8e6;
+        }
+
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.6);
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <div class="player" id="player"></div>
+        <div class="monster monster1" id="monster1"></div>
+        <div class="monster monster2" id="monster2"></div>
+    </div>
+
+    <div id="score">⏱️ Survie: <span id="time">0</span>s</div>
+
+    <div id="instructions">🎮 Déplacez votre souris pour contrôler le personnage - Évitez les monstres!</div>
+
+    <div id="gameOver">
+        <h1>💀 GAME OVER!</h1>
+        <p>Vous avez survécu <span id="finalTime">0</span> secondes!</p>
+        <button onclick="restartGame()">🔄 Rejouer</button>
+    </div>
+
+    <script>
+        const player = document.getElementById('player');
+        const monster1 = document.getElementById('monster1');
+        const monster2 = document.getElementById('monster2');
+        const timeDisplay = document.getElementById('time');
+        const finalTimeDisplay = document.getElementById('finalTime');
+        const gameOverScreen = document.getElementById('gameOver');
+
+        let playerX = window.innerWidth / 2;
+        let playerY = window.innerHeight / 2;
+
+        let monster1X = 100;
+        let monster1Y = 100;
+        let monster2X = window.innerWidth - 100;
+        let monster2Y = window.innerHeight - 100;
+
+        let gameRunning = true;
+        let startTime = Date.now();
+        let survivalTime = 0;
+
+        const monster1Speed = 2.5;
+        const monster2Speed = 2;
+
+        // Suivi de la souris
+        document.addEventListener('mousemove', (e) => {
+            if (gameRunning) {
+                playerX = e.clientX;
+                playerY = e.clientY;
+            }
+        });
+
+        // Mise à jour de la position du joueur
+        function updatePlayer() {
+            player.style.left = playerX + 'px';
+            player.style.top = playerY + 'px';
+        }
+
+        // Déplacement des monstres vers le joueur
+        function updateMonsters() {
+            // Monstre 1 - poursuit le joueur
+            let dx1 = playerX - monster1X;
+            let dy1 = playerY - monster1Y;
+            let dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+
+            if (dist1 > 0) {
+                monster1X += (dx1 / dist1) * monster1Speed;
+                monster1Y += (dy1 / dist1) * monster1Speed;
+            }
+
+            // Monstre 2 - poursuit le joueur (légèrement plus lent)
+            let dx2 = playerX - monster2X;
+            let dy2 = playerY - monster2Y;
+            let dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+            if (dist2 > 0) {
+                monster2X += (dx2 / dist2) * monster2Speed;
+                monster2Y += (dy2 / dist2) * monster2Speed;
+            }
+
+            // Les monstres s'évitent légèrement entre eux
+            let dxM = monster2X - monster1X;
+            let dyM = monster2Y - monster1Y;
+            let distM = Math.sqrt(dxM * dxM + dyM * dyM);
+
+            if (distM < 60 && distM > 0) {
+                monster1X -= (dxM / distM) * 0.5;
+                monster1Y -= (dyM / distM) * 0.5;
+                monster2X += (dxM / distM) * 0.5;
+                monster2Y += (dyM / distM) * 0.5;
+            }
+
+            monster1.style.left = monster1X + 'px';
+            monster1.style.top = monster1Y + 'px';
+            monster2.style.left = monster2X + 'px';
+            monster2.style.top = monster2Y + 'px';
+        }
+
+        // Vérification des collisions
+        function checkCollision() {
+            const playerRadius = 20;
+            const monsterRadius = 17;
+            const collisionDist = playerRadius + monsterRadius;
+
+            // Collision avec monstre 1
+            let dx1 = playerX - monster1X;
+            let dy1 = playerY - monster1Y;
+            let dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+
+            // Collision avec monstre 2
+            let dx2 = playerX - monster2X;
+            let dy2 = playerY - monster2Y;
+            let dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+            if (dist1 < collisionDist || dist2 < collisionDist) {
+                gameOver();
+            }
+        }
+
+        // Mise à jour du temps
+        function updateTime() {
+            if (gameRunning) {
+                survivalTime = Math.floor((Date.now() - startTime) / 1000);
+                timeDisplay.textContent = survivalTime;
+            }
+        }
+
+        // Game Over
+        function gameOver() {
+            gameRunning = false;
+            finalTimeDisplay.textContent = survivalTime;
+            gameOverScreen.style.display = 'block';
+            document.body.style.cursor = 'default';
+        }
+
+        // Redémarrer le jeu
+        function restartGame() {
+            playerX = window.innerWidth / 2;
+            playerY = window.innerHeight / 2;
+            monster1X = 100;
+            monster1Y = 100;
+            monster2X = window.innerWidth - 100;
+            monster2Y = window.innerHeight - 100;
+
+            gameRunning = true;
+            startTime = Date.now();
+            survivalTime = 0;
+
+            gameOverScreen.style.display = 'none';
+            document.body.style.cursor = 'none';
+        }
+
+        // Boucle de jeu principale
+        function gameLoop() {
+            if (gameRunning) {
+                updatePlayer();
+                updateMonsters();
+                checkCollision();
+                updateTime();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Démarrer le jeu
+        updatePlayer();
+        monster1.style.left = monster1X + 'px';
+        monster1.style.top = monster1Y + 'px';
+        monster2.style.left = monster2X + 'px';
+        monster2.style.top = monster2Y + 'px';
+
+        gameLoop();
+    </script>
+</body>
+</html>
